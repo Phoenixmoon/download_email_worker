@@ -107,8 +107,8 @@ def lambda_handler(event, context):
                 print("current eml:", eml)
 
 
-        client = MilvusClient(uri="https://in03-349aeff0ec8bf13.serverless.gcp-us-west1.cloud.zilliz.com",
-                              token="1d97f811965d4488e85de0510f459af6b5842dcd5c6faff395afb4a246cbaafe39657a0b7956e66410215c971394586d60f81704")
+        client = MilvusClient(uri="",
+                              token="")
 
         client.describe_collection(collection_name="Email_RAG")
 
