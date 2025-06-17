@@ -12,8 +12,6 @@ from email_processing import read_eml
 from pymilvus import MilvusClient
 import time
 
-# import requests
-
 
 def download_message(svr, uid, file):
     resp, lst = svr.uid('fetch', str(uid), '(RFC822)')
