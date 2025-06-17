@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Tuple, Any, Optional, Union
 from email_processing import read_eml
 from pymilvus import MilvusClient
+import time
 
 # import requests
 
@@ -22,13 +23,25 @@ def download_message(svr, uid, file):
         f.write(lst[0][1])
 
 
+# def download_email(uid, gmail_folder_name, user, pwd):
+#     svr = connect_to_server(user, pwd)
+#     svr.select(gmail_folder_name, readonly=True)
+#     print(f"Downloading UID: {uid}")
+#     filepath = f"{uid}.eml"
+#     download_message(svr, uid, filepath)
+#     svr.logout()
+
 def download_email(uid, gmail_folder_name, user, pwd):
-    svr = connect_to_server(user, pwd)
-    svr.select(gmail_folder_name, readonly=True)
+    t0 = time.time()
     print(f"Downloading UID: {uid}")
+    svr = connect_to_server(user, pwd)
+    t1 = time.time()
+    svr.select(gmail_folder_name, readonly=True)
     filepath = f"{uid}.eml"
     download_message(svr, uid, filepath)
     svr.logout()
+    print(f'Downloaded {uid}, took {round(time.time()-t1, 2)}s to download & server connection took {round(t1 - t0,2)}')
+
 
 
 def connect_to_server(user, pwd):
@@ -91,7 +104,7 @@ def lambda_handler(event, context):
                 try:
                     result = future.result()
                 except Exception as e:
-                    print(f"Error downloading UID {futures[future]}: {e}")
+                    print(f"Error downloading UID {future}: {e}")
 
         print("All emails downloaded.")
 
@@ -107,8 +120,8 @@ def lambda_handler(event, context):
                 print("current eml:", eml)
 
 
-        client = MilvusClient(uri="",
-                              token="")
+        client = MilvusClient(uri="https://in03-349aeff0ec8bf13.serverless.gcp-us-west1.cloud.zilliz.com",
+                              token="1d97f811965d4488e85de0510f459af6b5842dcd5c6faff395afb4a246cbaafe39657a0b7956e66410215c971394586d60f81704")
 
         client.describe_collection(collection_name="Email_RAG")
 
@@ -153,7 +166,7 @@ def lambda_handler(event, context):
                     result = future.result()
                     to_insert.append(result)
                 except Exception as e:
-                    print(f"Error downloading UID {futures[future]}: {e}")
+                    print(f"Error downloading UID {futuregit status}: {e}")
 
         client.insert(
             collection_name="amazon_collection",
@@ -182,7 +195,7 @@ def lambda_handler(event, context):
 if __name__ == "__main__":
     event = {
         "user": "jz5822.nyu@gmail.com",
-        "pwd": "",
+        "pwd": "zkcj tcwx uaud tdbi",
         "data": [10, 11, 12, 13, 14, 15, 16],
         "index": 1
     }
