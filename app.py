@@ -166,7 +166,7 @@ def lambda_handler(event, context):
                     result = future.result()
                     to_insert.append(result)
                 except Exception as e:
-                    print(f"Error downloading UID {futuregit status}: {e}")
+                    print(f"Error downloading UID {future}: {e}")
 
         client.insert(
             collection_name="amazon_collection",
