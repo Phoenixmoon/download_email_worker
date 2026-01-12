@@ -49,9 +49,47 @@ def convert_date_to_unix(date_string):
     return int(unix_time)
 
 
+def read_eml_from_dict(email_dict):
+    """
+    Creates an Eml object from a Gmail API email dictionary.
+
+    Inputs:
+        email_dict [dict]: Dictionary with keys 'subject', 'from', 'to', 'date', 'body'
+
+    Returns [Eml]: the eml object
+    """
+
+    subject = email_dict.get('subject', 'No Subject')
+    sender = email_dict.get('from', 'No Sender')
+    receiver = email_dict.get('to', 'No Recipient')
+    date_string = email_dict.get('date', '')
+    body = email_dict.get('body', '')
+
+    # Build the text field with subject, sender, receiver, and body
+    text_parts = [
+        f"Subject: {subject}",
+        f"From: {sender}",
+        f"To: {receiver}",
+        f"Body:\n{body}"
+    ]
+    text = "\n".join(text_parts)
+
+    # Convert date to Unix timestamp
+    try:
+        unix_date = convert_date_to_unix(date_string)
+    except (ValueError, TypeError):
+        # If date conversion fails, use current time
+        unix_date = int(time.time())
+
+    res = Eml(subject, sender, receiver, unix_date, text)
+
+    return res
+
+
 def read_eml(file_path):
     """
     Opens and reads an email and creates the eml object.
+    DEPRECATED: Use read_eml_from_dict() for Gmail API format.
 
     Inputs:
         file_path [str]: file path to the email
