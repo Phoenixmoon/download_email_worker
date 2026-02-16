@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**'
+      - '!README.md'
+
+# paths so that when README is changed, it won't redeploy
 
 jobs:
   deploy:

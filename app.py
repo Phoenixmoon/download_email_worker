@@ -3,13 +3,15 @@ from tempfile import TemporaryDirectory
 import imaplib
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from traceback import format_exc
+
 import boto3
 import pickle
 import glob
 from datetime import datetime
 from typing import List, Dict, Tuple, Any, Optional, Union
 
-from download_email_worker.const import DOWNLOAD_EMAIL_WORKER_TIMEOUT_SECONDS
+from const import DOWNLOAD_EMAIL_WORKER_TIMEOUT_SECONDS
 from email_processing import read_eml_from_dict
 from pymilvus import MilvusClient
 import urllib.request
@@ -39,31 +41,83 @@ def download_message(access_token, message_id):
 
     except Exception as e:
         print(f"Error getting message {message_id}: {e}")
+        print(format_exc())
         return None
 
+
+#
+# def get_message_body(message):
+#     import base64
+#
+#     def get_email_body(message):
+#         payload = message['payload']
+#
+#         # Check if it's multipart
+#         if 'parts' in payload:
+#             # Multipart message - iterate through parts
+#             for part in payload['parts']:
+#                 mime_type = part['mimeType']
+#
+#                 # Get plain text or HTML
+#                 if mime_type == 'text/plain':
+#                     data = part['body']['data']
+#                     return base64.urlsafe_b64decode(data).decode('utf-8')
+#         else:
+#             # Simple message - body is directly in payload
+#             if 'data' in payload['body']:
+#                 data = payload['body']['data']
+#                 return base64.urlsafe_b64decode(data).decode('utf-8')
+#
+#         return None
 
 def get_message_body(message):
-    """Extract body from message."""
+    payload = message.get('payload')
 
-    def get_body_recursive(payload):
-        if 'body' in payload and payload['body'].get('data'):
-            return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+    payload_body = payload.get('body')
 
-        if 'parts' in payload:
-            for part in payload['parts']:
+    try:
+        if payload_body.get("size") != 0:
+            base64_body = payload_body.get('data')
+            return base64.b64decode(base64_body).decode('utf-8', errors='ignore')
+        else:
+            parts = payload.get('parts')
+
+            for part in parts:
                 if part.get('mimeType') == 'text/plain':
-                    if part.get('body', {}).get('data'):
-                        return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
+                    part_body = part.get('body')
+                    base64_body = part_body.get('data')
+                    return base64.b64decode(base64_body).decode('utf-8', errors='ignore')
+    except Exception as e:
+        breakpoint()
 
-            # If no text/plain, try first part
-            for part in payload['parts']:
-                body = get_body_recursive(part)
-                if body:
-                    return body
 
-        return None
 
-    return get_body_recursive(message.get('payload', {}))
+# def get_message_body(message):
+#     """Extract body from message."""
+#
+#     text_part = message['payload']['parts'][0]
+#     text_data = text_part['body']['data']
+#     text_content = base64.urlsafe_b64decode(text_data).decode('utf-8')
+#
+#     def get_body_recursive(payload):
+#         if 'body' in payload and payload['body'].get('data'):
+#             return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+#
+#         if 'parts' in payload:
+#             for part in payload['parts']:
+#                 if part.get('mimeType') == 'text/plain':
+#                     if part.get('body', {}).get('data'):
+#                         return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
+#
+#             # If no text/plain, try first part
+#             for part in payload['parts']:
+#                 body = get_body_recursive(part)
+#                 if body:
+#                     return body
+#
+#         return None
+#
+#     return get_body_recursive(message.get('payload', {}))
 
 
 def extract_email_data(message):
@@ -165,11 +219,11 @@ def lambda_handler(event, context):
 
     status_table = dynamodb.Table("email_download_status")
     status = {
-        "run_id": run_id, "worker_id": str(i), "status": "Incomplete", "timeout": time.time() + DOWNLOAD_EMAIL_WORKER_TIMEOUT_SECONDS
+        "run_id": run_id, "worker_id": str(i), "status": "Incomplete", "timeout": int(time.time()) + DOWNLOAD_EMAIL_WORKER_TIMEOUT_SECONDS
     }
     status_table.put_item(Item=status)
 
-    access_token = get_access_token(cognito_id, False)
+    access_token = get_access_token(cognito_id, True)
 
     print(user)
     print("folder:", gmail_folder_name)
@@ -278,12 +332,20 @@ def lambda_handler(event, context):
 
 
 if __name__ == "__main__":
+    # event = {
+    #     "user": "jz5822.nyu@gmail.com",
+    #     "cognito_id": "34c85458-40d1-7074-2b96-e8ff166608ee",
+    #     "data": ["1879ac5e4ba4ce09", "1879aa4267c40949", "1879a978d876149d", "1879a8e8cbc2650c", "1879a8b48f0ad181"],
+    #     "batch_number": 5,
+    #     "run_id": "abcdefghi"
+    # }
+
     event = {
-        "user": "jz5822.nyu@gmail.com",
-        "cognito_id": "34c85458-40d1-7074-2b96-e8ff166608ee",
-        "data": ["1879ac5e4ba4ce09", "1879aa4267c40949", "1879a978d876149d", "1879a8e8cbc2650c", "1879a8b48f0ad181"],
+        "user": "silversnowblossom14@gmail.com",
+        "cognito_id": "a4281448-90b1-7086-0898-910fbe596b29",
+        "data": ["19bac9d127561cf0", "19a714a257d484f8", "1983cf4a13fa29ee", "19419c37121332af", "18f90a151f0d18bf"],
         "batch_number": 5,
-        "run_id": "abcdefghi"
+        "run_id": "abcdefghijk"
     }
 
     print(lambda_handler(event, None))
