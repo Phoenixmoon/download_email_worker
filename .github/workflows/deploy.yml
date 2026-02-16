@@ -36,7 +36,7 @@ jobs:
     - name: Build Docker image
       run: |
         IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest"
-        docker build -t $IMAGE_URI -f docker/Dockerfile .
+        docker build --platform linux/amd64 -t $IMAGE_URI -f docker/Dockerfile .
 
     - name: Push Docker image to ECR
       run: |
