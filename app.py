@@ -86,9 +86,9 @@ def get_message_body(message):
                 if part.get('mimeType') == 'text/plain':
                     part_body = part.get('body')
                     base64_body = part_body.get('data')
-                    return base64.b64decode(base64_body).decode('utf-8', errors='ignore')
+                    return base64.urlsafe_b64decode(base64_body).decode('utf-8', errors='ignore')
     except Exception as e:
-        breakpoint()
+        print(e)
 
 
 
@@ -208,6 +208,7 @@ def lambda_handler(event, context):
     TODO add description
     """
     start = time.time()
+    print("Received event:", event)
 
     user = event.get("user")
     cognito_id = event.get("cognito_id")
@@ -340,12 +341,18 @@ if __name__ == "__main__":
     #     "run_id": "abcdefghi"
     # }
 
-    event = {
-        "user": "silversnowblossom14@gmail.com",
-        "cognito_id": "a4281448-90b1-7086-0898-910fbe596b29",
-        "data": ["19bac9d127561cf0", "19a714a257d484f8", "1983cf4a13fa29ee", "19419c37121332af", "18f90a151f0d18bf"],
-        "batch_number": 5,
-        "run_id": "abcdefghijk"
-    }
+    # event = {
+    #     "user": "silversnowblossom14@gmail.com",
+    #     "cognito_id": "a4281448-90b1-7086-0898-910fbe596b29",
+    #     "data": ["19bac9d127561cf0", "19a714a257d484f8", "1983cf4a13fa29ee", "19419c37121332af", "18f90a151f0d18bf"],
+    #     "batch_number": 5,
+    #     "run_id": "abcdefghijk"
+    # }
+
+    event = {'user': 'silversnowblossom14@gmail.com',
+             'cognito_id': 'a4281448-90b1-7086-0898-910fbe596b29',
+             'gmail_folder': 'INBOX',
+             'data': ['199e75e490c0f59e', '199e3baefd4eb537', '199c0951c0bfed85', '199c08591f9e7a89', '199c084ca33fb35f', '199bea61363b7424', '199afd1145ed3d99', '199a691387056bff', '19997b571958c584', '19995b742451278b', '1992d39ea0473564', '198eb5ffb1707fd6', '198b59b24ed9dca7', '198b59b158e85d1f', '198b59ad088d474b', '1987df3e158ec0f4', '1986f7a281dfa37b', '198674e1db1cc355', '1985ea919cfe7690', '1985ea916fd1da9b', '1985ea90c807d191', '1985ea9014d7f534', '19855b41de762386', '1984b7141af93a51', '19846413a15e26d5', '19844e36f282a36f', '1984444a2f7f5159', '19843e0321b9d1a3', '198421c280aac530', '1984119922b38e65', '1983ff97e03d9de8', '1983dd259cdc2c12', '1983d6c17e4f8403', '1983cf4a13fa29ee', '1983cf4a12fc4cd9', '1983ca18fd3c94ec', '1983c98e529568ae'],
+             'index': 1, 'num_workers': 1, 'run_id': '20260216-163419-37587fb3'}
 
     print(lambda_handler(event, None))
