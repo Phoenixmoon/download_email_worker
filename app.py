@@ -18,6 +18,8 @@ import urllib.request
 import time
 import base64
 import requests
+import numpy as np
+from utils import construct_zilliz_key
 
 # TODO add retry - state machine
 
@@ -37,7 +39,7 @@ def download_message(access_token, message_id):
             message = json.loads(response.read().decode())
 
         # Extract and return the email data immediately
-        return extract_email_data(message)
+        return message_id, extract_email_data(message)
 
     except Exception as e:
         print(f"Error getting message {message_id}: {e}")
@@ -157,7 +159,10 @@ def embed_worker(
 
     response_body = json.loads(response.get('body').read())
     embedding = response_body.get("embedding")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    data_link['timestamp_embedding'] = np.int64(timestamp)
     data_link['vector'] = embedding
+
     return data_link
 
 def get_access_token(cognito_id: str, refresh: bool):
@@ -217,6 +222,7 @@ def lambda_handler(event, context):
     max_workers = event.get("num_workers", 4)
     i = event.get("batch_number")
     run_id = event.get("run_id")
+    private = bool(event.get("privacy_setting", True))
 
     status_table = dynamodb.Table("email_download_status")
     status = {
@@ -250,46 +256,48 @@ def lambda_handler(event, context):
 
     # Process the email data - convert dicts to Eml objects and cleanse
     processed_emails = []
-    for email_dict in emails_data:
+    for uid, email_dict in emails_data:
         try:
             mail = read_eml_from_dict(email_dict)
             mail.cleanse_eml()
-            processed_emails.append(mail)
+            processed_emails.append(uid, mail)
         except Exception as e:
             print(f"Error processing email {email_dict.get('id', 'unknown')}: {e}")
 
     client = MilvusClient(uri="https://in03-349aeff0ec8bf13.serverless.gcp-us-west1.cloud.zilliz.com",
                           token="1d97f811965d4488e85de0510f459af6b5842dcd5c6faff395afb4a246cbaafe39657a0b7956e66410215c971394586d60f81704")
 
-    client.describe_collection(collection_name="Email_RAG") # TODO collection name based on user?
+    client.describe_collection(collection_name="gmail_rag") # TODO collection name based on user?
 
     to_insert = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = []
-        for eml in processed_emails:
+        for uid, eml in processed_emails:
             eml_pieces = []
             j = 0
             while j < len(eml.text):
                 eml_pieces.append(eml.text[j:j + 20000])
                 j += 20000
 
-            for piece in eml_pieces:
+            total_pieces = len(eml_pieces)
+
+            for piece_idx, piece in enumerate(eml_pieces):
                 sample_model_input = {
                     "inputText": piece,
                     "dimensions": 1024,
                     "normalize": True
                 }
+
                 data_link = {
-                    'primary_key': eml.date,  ## TODO hash function based on content and time
-                    'subject': eml.subject,
-                    'recipients': eml.receiver,
-                    'sender': eml.sender,
-                    'date': eml.date,
+                    'primary_key': construct_zilliz_key(cognito_id=cognito_id, email_id=uid, part_id=piece_idx, total_parts=total_pieces),
+                    # 'subject': eml.subject,
+                    # 'recipients': eml.receiver,
+                    # 'sender': eml.sender,
+                    # 'date': eml.date,
                     # list of reply times / timepoints - if convo chain
-                    'part': j,
-                    'total_parts': len(eml_pieces),
-                    'raw_text': eml.text,
+                    # 'part': j,
+                    # 'raw_text': eml.text,
                 }
 
                 futures.append(
@@ -305,9 +313,12 @@ def lambda_handler(event, context):
                 print(f"Error embedding: {e}")
 
     client.insert(
-        collection_name="amazon_collection",
+        collection_name="gmail_rag",
         data=to_insert
     )
+
+    if not private:
+        pass
 
 
     # update completion status
