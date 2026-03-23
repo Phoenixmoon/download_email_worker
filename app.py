@@ -26,7 +26,7 @@ from utils import construct_zilliz_key
 
 dynamodb = boto3.resource('dynamodb')
 
-def download_message(access_token, message_id):
+def download_message(access_token: str, message_id: str):
     """Get full message content using Gmail API and return extracted data."""
     try:
         url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}?format=full"
@@ -142,10 +142,11 @@ def extract_email_data(message):
 def embed_worker(
         sample_model_input: Dict,
         data_link: Dict,
+        dynamo_data: Dict,
         model_id: str = "amazon.titan-embed-text-v2:0",
         accept: str = "application/json",
         content_type: str = "application/json",
-) -> Dict:
+) -> Tuple[Dict]:
     bedrock_runtime = boto3.client(
         service_name='bedrock-runtime',
         region_name='us-east-1',
@@ -163,7 +164,7 @@ def embed_worker(
     data_link['timestamp_embedding'] = np.int64(timestamp)
     data_link['vector'] = embedding
 
-    return data_link
+    return data_link, dynamo_data
 
 def get_access_token(cognito_id: str, refresh: bool):
     kms_client = boto3.client('kms', region_name='us-east-1')
@@ -220,7 +221,7 @@ def lambda_handler(event, context):
     gmail_folder_name = event.get("gmail_folder")
     uids_to_download = event.get("data")
     max_workers = event.get("num_workers", 4)
-    i = event.get("batch_number")
+    i = event["batch_number"]
     run_id = event.get("run_id")
     private = bool(event.get("privacy_setting", True))
 
@@ -260,16 +261,17 @@ def lambda_handler(event, context):
         try:
             mail = read_eml_from_dict(email_dict)
             mail.cleanse_eml()
-            processed_emails.append(uid, mail)
+            processed_emails.append((uid, mail))
         except Exception as e:
             print(f"Error processing email {email_dict.get('id', 'unknown')}: {e}")
 
     client = MilvusClient(uri="https://in03-349aeff0ec8bf13.serverless.gcp-us-west1.cloud.zilliz.com",
                           token="1d97f811965d4488e85de0510f459af6b5842dcd5c6faff395afb4a246cbaafe39657a0b7956e66410215c971394586d60f81704")
 
-    client.describe_collection(collection_name="gmail_rag") # TODO collection name based on user?
+    client.describe_collection(collection_name="GMAIL_RAG") # TODO collection name based on user?
 
     to_insert = []
+    dynamo_insert = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = []
@@ -285,7 +287,7 @@ def lambda_handler(event, context):
             for piece_idx, piece in enumerate(eml_pieces):
                 sample_model_input = {
                     "inputText": piece,
-                    "dimensions": 1024,
+                    "dimensions": 256,
                     "normalize": True
                 }
 
@@ -300,25 +302,43 @@ def lambda_handler(event, context):
                     # 'raw_text': eml.text,
                 }
 
+                dynamo_data = {
+                    'cognito_id': cognito_id,
+                    'email_id': uid,
+                    'part_id': piece_idx,
+                    'total_parts': total_pieces,
+                    'subject': eml.subject,
+                    'recipients': eml.receiver,
+                    'sender': eml.sender,
+                    'date': eml.date,
+                    'raw_text': eml.text,
+                    'timestamp': int(time.time())
+                }
+
                 futures.append(
                     executor.submit(embed_worker,
                                     sample_model_input=sample_model_input,
-                                    data_link=data_link))
+                                    data_link=data_link,
+                                    dynamo_data=dynamo_data))
 
         for future in as_completed(futures):
             try:
-                result = future.result()
-                to_insert.append(result)
+                zilliz_data, dynamo_data = future.result()
+                to_insert.append(zilliz_data)
+                dynamo_insert.append(dynamo_data)
             except Exception as e:
                 print(f"Error embedding: {e}")
 
     client.insert(
-        collection_name="gmail_rag",
+        collection_name="GMAIL_RAG",
         data=to_insert
     )
 
     if not private:
-        pass
+        dynamo_table = dynamodb.Table("downloaded_emails")
+        with dynamo_table.batch_writer() as batch:
+            for item in dynamo_insert:
+                batch.put_item(Item=item)
 
 
     # update completion status
@@ -363,7 +383,8 @@ if __name__ == "__main__":
     event = {'user': 'silversnowblossom14@gmail.com',
              'cognito_id': 'a4281448-90b1-7086-0898-910fbe596b29',
              'gmail_folder': 'INBOX',
+             'batch_number': 0,
              'data': ['199e75e490c0f59e', '199e3baefd4eb537', '199c0951c0bfed85', '199c08591f9e7a89', '199c084ca33fb35f', '199bea61363b7424', '199afd1145ed3d99', '199a691387056bff', '19997b571958c584', '19995b742451278b', '1992d39ea0473564', '198eb5ffb1707fd6', '198b59b24ed9dca7', '198b59b158e85d1f', '198b59ad088d474b', '1987df3e158ec0f4', '1986f7a281dfa37b', '198674e1db1cc355', '1985ea919cfe7690', '1985ea916fd1da9b', '1985ea90c807d191', '1985ea9014d7f534', '19855b41de762386', '1984b7141af93a51', '19846413a15e26d5', '19844e36f282a36f', '1984444a2f7f5159', '19843e0321b9d1a3', '198421c280aac530', '1984119922b38e65', '1983ff97e03d9de8', '1983dd259cdc2c12', '1983d6c17e4f8403', '1983cf4a13fa29ee', '1983cf4a12fc4cd9', '1983ca18fd3c94ec', '1983c98e529568ae'],
-             'index': 1, 'num_workers': 1, 'run_id': '20260216-163419-37587fb3'}
+             'index': 1, 'num_workers': 1, 'run_id': '20260216-163419-37587fb3', "privacy_setting": False}
 
     print(lambda_handler(event, None))
